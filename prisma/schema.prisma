@@ -1,0 +1,174 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ======= Usuários e Autenticação =======
+
+enum Role {
+  funcionario
+  admin
+}
+
+// Tipo da Lei (classificação por conteúdo)
+enum LeiTipo {
+  LEI
+  COMPLEMENTAR
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  role         Role     @default(funcionario)
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("usuarios")
+}
+
+model Lei {
+  id            String    @id @default(cuid())
+  titulo        String
+  ementa        String?
+  numero        String
+  data          DateTime?
+  origem        String // URL ou nome do arquivo
+  textoCompleto String?
+  criadoEm      DateTime  @default(now())
+  atualizadoEm  DateTime  @updatedAt
+  tipo          LeiTipo   @default(LEI)
+
+  // Relacionamentos
+  artigos Artigo[]
+  capitulos Capitulo[]
+
+  @@map("leis")
+}
+
+model Capitulo {
+  id     String @id @default(cuid())
+  numero String?
+  nome   String?
+  ordem  Int
+
+  // Relacionamentos
+  leiId   String
+  lei     Lei     @relation(fields: [leiId], references: [id], onDelete: Cascade)
+  artigos Artigo[]
+
+  @@map("capitulos")
+}
+
+model Artigo {
+  id     String @id @default(cuid())
+  numero String // Ex: "Art. 1º"
+  texto  String
+  ordem  Int // Para manter a ordem dos artigos
+
+  // Relacionamentos
+  leiId      String
+  lei        Lei         @relation(fields: [leiId], references: [id], onDelete: Cascade)
+  paragrafos Paragrafo[]
+  Inciso     Inciso[]
+
+  // Associação opcional com capítulo
+  capituloId String?
+  capitulo   Capitulo?    @relation(fields: [capituloId], references: [id], onDelete: SetNull)
+
+  @@map("artigos")
+}
+
+model Paragrafo {
+  id     String @id @default(cuid())
+  numero String // Ex: "§1º", "§2º"
+  texto  String
+  ordem  Int // Para manter a ordem dos parágrafos
+
+  // Relacionamentos
+  artigoId String
+  artigo   Artigo   @relation(fields: [artigoId], references: [id], onDelete: Cascade)
+  incisos  Inciso[]
+
+  @@map("paragrafos")
+}
+
+model Inciso {
+  id     String @id @default(cuid())
+  numero String // Ex: "I", "II", "III"
+  texto  String
+  ordem  Int // Para manter a ordem dos incisos
+
+  // Relacionamentos
+  paragrafoId String?
+  paragrafo   Paragrafo? @relation(fields: [paragrafoId], references: [id], onDelete: Cascade)
+
+  // Incisos podem estar diretamente ligados a artigos também
+  artigoId String?
+  artigo   Artigo? @relation(fields: [artigoId], references: [id], onDelete: Cascade)
+
+  alineas Alinea[]
+
+  @@map("incisos")
+}
+
+model Alinea {
+  id     String @id @default(cuid())
+  numero String // Ex: "a)", "b)", "c)"
+  texto  String
+  ordem  Int // Para manter a ordem das alíneas
+
+  // Relacionamentos
+  incisoId String
+  inciso   Inciso @relation(fields: [incisoId], references: [id], onDelete: Cascade)
+  itens    Item[]
+
+  @@map("alineas")
+}
+
+model Item {
+  id     String @id @default(cuid())
+  numero String // Ex: "1)", "2)", "3)"
+  texto  String
+  ordem  Int // Para manter a ordem dos itens
+
+  // Relacionamentos
+  alineaId String
+  alinea   Alinea @relation(fields: [alineaId], references: [id], onDelete: Cascade)
+
+  @@map("itens")
+}
+
+// ======= Modelos para Dicionário de Categorias =======
+
+model Categoria {
+  id          String   @id @default(cuid())
+  nome        String
+  slug        String   @unique
+  descricao   String?
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  palavras CategoriaKeyword[]
+
+  @@map("categorias")
+}
+
+model CategoriaKeyword {
+  id           String    @id @default(cuid())
+  termo        String
+
+  categoriaId  String
+  categoria    Categoria @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
+
+  @@unique([categoriaId, termo])
+  @@map("categoria_keywords")
+}

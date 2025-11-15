@@ -1,0 +1,5 @@
+.env
+node_modules
+dist
+COMPUTADOR_DAS_LEIS
+uploads/
