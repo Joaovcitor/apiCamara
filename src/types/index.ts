@@ -101,6 +101,7 @@ export interface LeiWithRelations {
   atualizadoEm: Date;
   tipo?: LeiTipo;
   artigos: ArtigoWithRelations[];
+  categorias: { id: string; nome: string; slug: string }[];
 }
 
 export interface ArtigoWithRelations {

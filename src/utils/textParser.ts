@@ -64,6 +64,12 @@ export class TextParser {
       .replace(/\bn\s*º\s*/gi, 'nº ')
       // Compactar repetições de símbolos após nº (ex.: "nº º º")
       .replace(/\bnº[º°\s]+/gi, 'nº ')
+      // Normalizar ordinais com dígitos (1° -> 1º, removendo espaços)
+      .replace(/(\d+)\s*[º°]/g, '$1º')
+      // Remover º/° quando inserido no meio de palavras
+      .replace(/([A-Za-zÀ-ÿ])\s*[º°]\s*([A-Za-zÀ-ÿ])/g, '$1$2')
+      // Corrigir casos de "nº" antes de palavras (ex.: "nº ordeste" -> "nordeste")
+      .replace(/\b([nN])\s*[º°]\s+([A-Za-zÀ-ÿ])/g, '$1$2')
       .replace(/\s+\n/g, '\n')
       .replace(/\n{3,}/g, '\n\n')
       .trim();

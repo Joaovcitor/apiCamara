@@ -50,6 +50,7 @@ model Lei {
   // Relacionamentos
   artigos Artigo[]
   capitulos Capitulo[]
+  categorias Categoria[]
 
   @@map("leis")
 }
@@ -158,6 +159,7 @@ model Categoria {
   atualizadoEm DateTime @updatedAt
 
   palavras CategoriaKeyword[]
+  leis     Lei[]
 
   @@map("categorias")
 }

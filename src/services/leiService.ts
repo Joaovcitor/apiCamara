@@ -10,6 +10,8 @@ import {
   AlineaWithRelations,
   ItemWithRelations,
 } from '../types';
+import { CategoryService } from './categoryService';
+import { categorizeLei, defaultCategoryDictionary } from '../utils/categorizer';
 import { logger } from '../utils/logger';
 import { AppError } from '../middlewares/errorHandler';
 
@@ -43,6 +45,7 @@ export class LeiService {
         capitulo: true,
       },
     },
+    categorias: true,
   } as const;
 
   constructor() {
@@ -161,10 +164,33 @@ export class LeiService {
             });
           }
 
+          // Categorizar automaticamente
+          const dict = await new CategoryService().getDictionary().catch(() => defaultCategoryDictionary);
+          const categories = categorizeLei(savedLei as unknown as LeiStructure, dict);
+          
+          if (categories.length > 0) {
+            // Buscar IDs das categorias
+            const cats = await tx.categoria.findMany({
+              where: { slug: { in: categories } },
+              select: { id: true }
+            });
+
+            if (cats.length > 0) {
+              await tx.lei.update({
+                where: { id: savedLei.id },
+                data: {
+                  categorias: {
+                    connect: cats.map(c => ({ id: c.id }))
+                  }
+                }
+              });
+            }
+          }
+
           return await tx.lei.findUnique({
             where: { id: savedLei.id },
             include: LeiService.FULL_INCLUDE,
-          });
+          }) as unknown as LeiWithRelations;
         }
       );
 
