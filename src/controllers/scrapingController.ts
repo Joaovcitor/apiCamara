@@ -4,7 +4,7 @@ import { LeiService } from '../services/leiService';
 import { ScrapingInput } from '../utils/validation';
 import { ApiResponse } from '../types';
 import { logger } from '../utils/logger';
-import { asyncHandler } from '../middlewares/errorHandler';
+import { asyncHandler, AppError } from '../middlewares/errorHandler';
 
 export class ScrapingController {
   private scrapingService: ScrapingService;
@@ -60,8 +60,14 @@ export class ScrapingController {
    */
   scrapLei = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { url }: ScrapingInput = req.body;
+    const municipioId = req.user?.municipioId;
+    const usuarioId = req.user?.id;
 
-    logger.info('Scraping request received', { url });
+    if (!municipioId || !usuarioId) {
+      throw new AppError('Usuário deve estar vinculado a um município para realizar scraping', 400);
+    }
+
+    logger.info('Scraping request received', { url, municipioId });
 
     const scrapingResult = await this.scrapingService.scrapeLei(url);
 
@@ -88,7 +94,7 @@ export class ScrapingController {
     }
 
     // Salvar no banco de dados
-    const savedLei = await this.leiService.saveLei(scrapingResult.data);
+    const savedLei = await this.leiService.saveLei(scrapingResult.data, municipioId, usuarioId);
 
     const response: ApiResponse = {
       success: true,
@@ -162,6 +168,12 @@ export class ScrapingController {
    */
   scrapBatch = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { urls }: { urls: string[] } = req.body;
+    const municipioId = req.user?.municipioId;
+    const usuarioId = req.user?.id;
+
+    if (!municipioId || !usuarioId) {
+      throw new AppError('Usuário deve estar vinculado a um município para realizar scraping', 400);
+    }
 
     if (!Array.isArray(urls) || urls.length === 0) {
       const response: ApiResponse = {
@@ -181,7 +193,7 @@ export class ScrapingController {
       return;
     }
 
-    logger.info('Batch scraping request received', { count: urls.length });
+    logger.info('Batch scraping request received', { count: urls.length, municipioId });
 
     const successful: any[] = [];
     const failed: Array<{ url: string; error: string }> = [];
@@ -195,7 +207,7 @@ export class ScrapingController {
         try {
           const scrapingResult = await this.scrapingService.scrapeLei(url);
           if (scrapingResult.success && scrapingResult.data) {
-            const savedLei = await this.leiService.saveLei(scrapingResult.data);
+            const savedLei = await this.leiService.saveLei(scrapingResult.data, municipioId, usuarioId);
             successful.push(savedLei);
           } else {
             failed.push({ url, error: scrapingResult.error || 'Falha no scraping' });
@@ -219,7 +231,7 @@ export class ScrapingController {
 
     logger.info('Batch scraping completed', { 
       total: urls.length,
-      successful: successful.length,
+      successful: successful.length, 
       failed: failed.length 
     });
 
@@ -262,6 +274,13 @@ export class ScrapingController {
    */
   scrapCustom = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { url, selectors } = req.body || {};
+    const municipioId = req.user?.municipioId;
+    const usuarioId = req.user?.id;
+
+    if (!municipioId || !usuarioId) {
+      throw new AppError('Usuário deve estar vinculado a um município para realizar scraping', 400);
+    }
+
     if (!url || typeof url !== 'string') {
       res.status(400).json({ success: false, error: 'Campo url é obrigatório' });
       return;
@@ -271,10 +290,10 @@ export class ScrapingController {
       return;
     }
 
-    logger.info('Custom scraping request', { url });
+    logger.info('Custom scraping request', { url, municipioId });
     const result = await this.scrapingService.scrapeWithSelectors(url, selectors);
     if (result.success && result.data) {
-      const saved = await this.leiService.saveLei(result.data);
+      const saved = await this.leiService.saveLei(result.data, municipioId, usuarioId);
       res.status(200).json({ success: true, data: saved, message: 'Lei extraída e salva com seletores customizados' });
     } else {
       res.status(502).json({ success: false, error: result.error || 'Falha no scraping custom' });

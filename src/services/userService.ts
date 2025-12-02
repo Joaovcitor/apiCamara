@@ -6,6 +6,8 @@ export type CreateUserParams = {
   name?: string;
   role?: Role;
   password: string;
+  municipioId?: string;
+  adminId?: string;
 };
 
 export type UpdateUserParams = {
@@ -13,6 +15,8 @@ export type UpdateUserParams = {
   name?: string;
   role?: Role;
   password?: string;
+  municipioId?: string;
+  adminId?: string;
 };
 
 export class UserService {
@@ -32,15 +36,19 @@ export class UserService {
     return rest;
   }
 
-  async listUsers(page = 1, limit = 20) {
+  async listUsers(page = 1, limit = 20, municipioId?: string) {
     const skip = (page - 1) * limit;
+    const where = municipioId ? { municipioId } : {};
+    
     const [items, total] = await Promise.all([
       this.prisma.user.findMany({
+        where,
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
+        include: { municipio: true },
       }),
-      this.prisma.user.count(),
+      this.prisma.user.count({ where }),
     ]);
     return {
       items: items.map((u: any) => this.toSafe(u)),
@@ -49,12 +57,18 @@ export class UserService {
   }
 
   async getUserById(id: string) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+    const user = await this.prisma.user.findUnique({ 
+      where: { id },
+      include: { municipio: true },
+    });
     return this.toSafe(user);
   }
 
   async getUserByEmail(email: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({ 
+      where: { email },
+      include: { municipio: true },
+    });
     return user; // retorna com hash para validação de senha
   }
 
@@ -68,7 +82,10 @@ export class UserService {
         name: params.name || null,
         role: params.role || 'funcionario',
         passwordHash,
+        municipioId: params.municipioId || null,
+        adminId: params.adminId || null,
       },
+      include: { municipio: true },
     });
     return this.toSafe(user);
   }
@@ -84,10 +101,13 @@ export class UserService {
     if (typeof params.name === 'string' || params.name === null) data.name = params.name ?? null;
     if (typeof params.role !== 'undefined') data.role = params.role;
     if (typeof passwordHash !== 'undefined') data.passwordHash = passwordHash;
+    if (typeof params.municipioId !== 'undefined') data.municipioId = params.municipioId;
+    if (typeof params.adminId !== 'undefined') data.adminId = params.adminId;
 
     const user = await this.prisma.user.update({
       where: { id },
       data,
+      include: { municipio: true },
     });
     return this.toSafe(user);
   }

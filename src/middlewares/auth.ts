@@ -10,6 +10,7 @@ export interface AuthUser {
   email: string;
   nome?: string;
   role: Role;
+  municipioId?: string;
 }
 
 declare global {
@@ -73,6 +74,7 @@ export async function validateCredentials(email: string, password: string): Prom
         email: dbUser.email,
         role: dbUser.role as Role,
       };
+      if (dbUser.municipioId) authUser.municipioId = dbUser.municipioId;
       if (dbUser.name) authUser.nome = dbUser.name;
       return authUser;
     }

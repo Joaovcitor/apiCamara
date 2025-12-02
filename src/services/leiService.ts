@@ -57,9 +57,9 @@ export class LeiService {
     });
   }
 
-  async saveLei(leiData: LeiStructure): Promise<LeiWithRelations> {
+  async saveLei(leiData: LeiStructure, municipioId: string, usuarioId: string): Promise<LeiWithRelations> {
     try {
-      logger.info('Saving lei to database', { titulo: leiData.titulo });
+      logger.info('Saving lei to database', { titulo: leiData.titulo, municipioId });
 
       const saved = await this.prisma.$transaction(
         async (tx: Prisma.TransactionClient) => {
@@ -75,6 +75,8 @@ export class LeiService {
               tipo: (leiData.tipo === 'COMPLEMENTAR'
                 ? 'COMPLEMENTAR'
                 : 'LEI') as any,
+              municipioId,
+              usuarioId,
             },
           });
 
@@ -223,20 +225,23 @@ export class LeiService {
   }
 
   async getLeis(
-    params: PaginationParams
+    params: PaginationParams,
+    municipioId?: string
   ): Promise<PaginatedResponse<LeiWithRelations>> {
     try {
       const { page, limit } = params;
       const skip = (page - 1) * limit;
+      const where = municipioId ? { municipioId } : {};
 
       const [leis, total] = await Promise.all([
         this.prisma.lei.findMany({
+          where,
           skip,
           take: limit,
           include: LeiService.FULL_INCLUDE,
           orderBy: { criadoEm: 'desc' },
         }),
-        this.prisma.lei.count(),
+        this.prisma.lei.count({ where }),
       ]);
 
       // Ordenar elementos hierárquicos para cada lei
@@ -263,7 +268,8 @@ export class LeiService {
 
   async searchLeis(
     query: string,
-    params: PaginationParams
+    params: PaginationParams,
+    municipioId?: string
   ): Promise<PaginatedResponse<LeiWithRelations>> {
     try {
       const { page, limit } = params;
@@ -276,6 +282,7 @@ export class LeiService {
           { numero: { contains: query, mode: 'insensitive' as const } },
           { textoCompleto: { contains: query, mode: 'insensitive' as const } },
         ],
+        ...(municipioId ? { municipioId } : {}),
       };
 
       const [leis, total] = await Promise.all([
@@ -308,6 +315,48 @@ export class LeiService {
     } catch (error) {
       logger.error('Error searching leis', error);
       throw new AppError('Erro ao buscar leis', 500);
+    }
+  }
+
+  async getLeisByMunicipio(
+    slug: string,
+    params: PaginationParams
+  ): Promise<PaginatedResponse<LeiWithRelations>> {
+    try {
+      const { page, limit } = params;
+      const skip = (page - 1) * limit;
+
+      const where = { municipio: { slug } };
+
+      const [leis, total] = await Promise.all([
+        this.prisma.lei.findMany({
+          where,
+          skip,
+          take: limit,
+          include: LeiService.FULL_INCLUDE,
+          orderBy: { criadoEm: 'desc' },
+        }),
+        this.prisma.lei.count({ where }),
+      ]);
+
+      (leis as unknown as LeiWithRelations[]).forEach((lei: LeiWithRelations) =>
+        this.sortHierarchicalElements(lei)
+      );
+
+      const totalPages = Math.ceil(total / limit);
+
+      return {
+        data: leis as unknown as LeiWithRelations[],
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages,
+        },
+      };
+    } catch (error) {
+      logger.error('Error fetching leis by municipio', error);
+      throw new AppError('Erro ao buscar leis do município', 500);
     }
   }
 

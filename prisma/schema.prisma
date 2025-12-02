@@ -23,6 +23,22 @@ enum LeiTipo {
   COMPLEMENTAR
 }
 
+model Municipio {
+  id        String   @id @default(cuid())
+  nome      String
+  slug      String   @unique
+  criadoEm  DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  usuarios  User[]
+  leis      Lei[]
+  
+  headerImage String? // URL/Path da imagem de cabeçalho
+  footerImage String? // URL/Path da imagem de rodapé
+
+  @@map("municipios")
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -31,6 +47,17 @@ model User {
   passwordHash String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  // Multi-tenancy
+  municipioId  String?
+  municipio    Municipio? @relation(fields: [municipioId], references: [id])
+
+  // Hierarquia
+  adminId      String?
+  admin        User?      @relation("UserHierarchy", fields: [adminId], references: [id])
+  subordinados User[]     @relation("UserHierarchy")
+
+  leisCriadas  Lei[]
 
   @@map("usuarios")
 }
@@ -46,6 +73,14 @@ model Lei {
   criadoEm      DateTime  @default(now())
   atualizadoEm  DateTime  @updatedAt
   tipo          LeiTipo   @default(LEI)
+
+  // Multi-tenancy
+  municipioId   String?
+  municipio     Municipio? @relation(fields: [municipioId], references: [id])
+
+  // Rastreabilidade
+  usuarioId     String?
+  usuario       User?      @relation(fields: [usuarioId], references: [id])
 
   // Relacionamentos
   artigos Artigo[]

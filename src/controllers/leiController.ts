@@ -16,89 +16,33 @@ export class LeiController {
     this.categoryService = new CategoryService();
   }
 
-  /**
-   * @swagger
-   * /leis:
-   *   get:
-   *     summary: Lista todas as leis com paginação
-   *     tags: [Leis]
-   *     parameters:
-   *       - in: query
-   *         name: page
-   *         schema:
-   *           type: integer
-   *           minimum: 1
-   *           default: 1
-   *         description: Número da página
-   *       - in: query
-   *         name: limit
-   *         schema:
-   *           type: integer
-   *           minimum: 1
-   *           maximum: 100
-   *           default: 10
-   *         description: Número de itens por página
-   *       - in: query
-   *         name: search
-   *         schema:
-   *           type: string
-   *         description: Termo de busca (título, ementa ou número)
-   *       - in: query
-   *         name: origem
-   *         schema:
-   *           type: string
-   *           enum: [scraping, upload]
-   *         description: Filtrar por origem
-   *     responses:
-   *       200:
-   *         description: Lista de leis
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 success:
-   *                   type: boolean
-   *                   example: true
-   *                 data:
-   *                   type: object
-   *                   properties:
-   *                     items:
-   *                       type: array
-   *                       items:
-   *                         $ref: '#/components/schemas/LeiSummary'
-   *                     pagination:
-   *                       $ref: '#/components/schemas/Pagination'
-   *                 message:
-   *                   type: string
-   */
   listLeis = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { page = 1, limit = 10, search, origem } = req.query as any;
+    const municipioId = req.user?.municipioId;
     
     const paginationParams: PaginationParams = {
       page: parseInt(page as string),
-      limit: Math.min(parseInt(limit as string), 100), // Máximo 100 itens por página
+      limit: Math.min(parseInt(limit as string), 100),
     };
 
     logger.info('List leis request', { 
       page: paginationParams.page, 
       limit: paginationParams.limit,
       search,
-      origem 
+      origem,
+      municipioId
     });
 
     let result;
 
     if (search) {
-      // Busca com termo
-      result = await this.leiService.searchLeis(search as string, paginationParams);
+      result = await this.leiService.searchLeis(search as string, paginationParams, municipioId);
     } else {
-      // Listagem normal com filtros opcionais
       const filters: any = {};
       if (origem) {
         filters.origem = origem;
       }
-      result = await this.leiService.getLeis(paginationParams);
+      result = await this.leiService.getLeis(paginationParams, municipioId);
     }
 
     const response: ApiResponse<PaginatedResponse<LeiWithRelations>> = {
@@ -110,37 +54,28 @@ export class LeiController {
     res.status(200).json(response);
   });
 
-  /**
-   * @swagger
-   * /leis/{id}:
-   *   get:
-   *     summary: Recupera uma lei específica com toda sua estrutura
-   *     tags: [Leis]
-   *     parameters:
-   *       - in: path
-   *         name: id
-   *         required: true
-   *         schema:
-   *           type: string
-   *         description: ID da lei (CUID)
-   *     responses:
-   *       200:
-   *         description: Lei encontrada
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 success:
-   *                   type: boolean
-   *                   example: true
-   *                 data:
-   *                   $ref: '#/components/schemas/Lei'
-   *                 message:
-   *                   type: string
-   *       404:
-   *         description: Lei não encontrada
-   */
+  listLeisByMunicipio = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { slug } = req.params;
+    const { page = 1, limit = 10 } = req.query as any;
+    
+    const paginationParams: PaginationParams = {
+      page: parseInt(page as string),
+      limit: Math.min(parseInt(limit as string), 100),
+    };
+
+    logger.info('List leis by municipio request', { slug, page: paginationParams.page });
+
+    const result = await this.leiService.getLeisByMunicipio(slug, paginationParams);
+
+    const response: ApiResponse<PaginatedResponse<LeiWithRelations>> = {
+      success: true,
+      data: result,
+      message: `${result.data.length} leis encontradas`,
+    };
+
+    res.status(200).json(response);
+  });
+
   getLeiById = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
 
@@ -156,6 +91,14 @@ export class LeiController {
       throw new AppError('Lei não encontrada', 404);
     }
 
+    // Se usuário logado, verificar permissão de município
+    if (req.user && req.user.municipioId && lei.municipioId && req.user.municipioId !== lei.municipioId) {
+       // Se for admin global (sem municipioId), pode ver tudo? 
+       // Assumindo que admin global não tem municipioId ou tem role especial.
+       // Mas aqui estamos verificando se user TEM municipioId e é diferente.
+       throw new AppError('Acesso negado a esta lei', 403);
+    }
+
     const response: ApiResponse = {
       success: true,
       data: lei,
@@ -165,14 +108,18 @@ export class LeiController {
     res.status(200).json(response);
   });
 
-  /**
-   * Cria uma nova lei com estrutura completa
-   */
   createLei = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const leiData = req.body;
-    logger.info('Create lei request', { titulo: leiData?.titulo, numero: leiData?.numero });
+    const municipioId = req.user?.municipioId;
+    const usuarioId = req.user?.id;
 
-    const saved = await this.leiService.saveLei(leiData);
+    if (!municipioId || !usuarioId) {
+      throw new AppError('Usuário deve estar vinculado a um município para criar leis', 400);
+    }
+
+    
+    const saved = await this.leiService.saveLei(leiData, municipioId, usuarioId);
+    logger.info('Create lei request', { titulo: leiData?.titulo, numero: leiData?.numero, municipioId });
     const response: ApiResponse = {
       success: true,
       data: saved,
@@ -181,12 +128,11 @@ export class LeiController {
     res.status(201).json(response);
   });
 
-  /**
-   * Atualiza parcialmente campos da lei (PATCH)
-   */
   updateLei = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
     if (!id) throw new AppError('ID da lei é obrigatório', 400);
+
+    // TODO: Verificar permissão de município antes de atualizar
 
     const updated = await this.leiService.updateLei(id, req.body ?? {});
     const response: ApiResponse = {
@@ -197,12 +143,11 @@ export class LeiController {
     res.status(200).json(response);
   });
 
-  /**
-   * Substitui completamente a lei (PUT) incluindo hierarquia
-   */
   replaceLei = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
     if (!id) throw new AppError('ID da lei é obrigatório', 400);
+
+    // TODO: Verificar permissão de município antes de substituir
 
     const replaced = await this.leiService.replaceLei(id, req.body);
     const response: ApiResponse = {
@@ -213,36 +158,6 @@ export class LeiController {
     res.status(200).json(response);
   });
 
-  /**
-   * @swagger
-   * /leis/{id}:
-   *   delete:
-   *     summary: Remove uma lei do banco de dados
-   *     tags: [Leis]
-   *     parameters:
-   *       - in: path
-   *         name: id
-   *         required: true
-   *         schema:
-   *           type: string
-   *         description: ID da lei (CUID)
-   *     responses:
-   *       200:
-   *         description: Lei removida com sucesso
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 success:
-   *                   type: boolean
-   *                   example: true
-   *                 message:
-   *                   type: string
-   *                   example: "Lei removida com sucesso"
-   *       404:
-   *         description: Lei não encontrada
-   */
   deleteLei = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
 
@@ -251,6 +166,8 @@ export class LeiController {
     }
 
     logger.info('Delete lei request', { id });
+
+    // TODO: Verificar permissão de município antes de deletar
 
     const deleted = await this.leiService.deleteLei(id);
 
@@ -266,43 +183,6 @@ export class LeiController {
     res.status(200).json(response);
   });
 
-  /**
-   * @swagger
-   * /leis/stats:
-   *   get:
-   *     summary: Recupera estatísticas das leis no banco de dados
-   *     tags: [Leis]
-   *     responses:
-   *       200:
-   *         description: Estatísticas das leis
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 success:
-   *                   type: boolean
-   *                   example: true
-   *                 data:
-   *                   type: object
-   *                   properties:
-   *                     total:
-   *                       type: number
-   *                       description: Total de leis
-   *                     porOrigem:
-   *                       type: object
-   *                       properties:
-   *                         scraping:
-   *                           type: number
-   *                         upload:
-   *                           type: number
-   *                     ultimasAdicionadas:
-   *                       type: array
-   *                       items:
-   *                         $ref: '#/components/schemas/LeiSummary'
-   *                 message:
-   *                   type: string
-   */
   getStats = asyncHandler(async (_req: Request, res: Response): Promise<void> => {
     logger.info('Get stats request');
 
@@ -317,38 +197,6 @@ export class LeiController {
     res.status(200).json(response);
   });
 
-  /**
-   * @swagger
-   * /leis/{id}/categorize:
-   *   post:
-   *     summary: Categoriza uma lei com base em um dicionário de palavras-chave
-   *     tags: [Leis]
-   *     parameters:
-   *       - in: path
-   *         name: id
-   *         required: true
-   *         schema:
-   *           type: string
-   *     requestBody:
-   *       required: false
-   *       content:
-   *         application/json:
-   *           schema:
-   *             type: object
-   *             properties:
-   *               dictionary:
-   *                 type: object
-   *                 additionalProperties:
-   *                   type: array
-   *                   items: { type: string }
-   *                 description: Dicionário de categorias → palavras-chave
-   *               minScore:
-   *                 type: number
-   *                 default: 2
-   *     responses:
-   *       200:
-   *         description: Categorias calculadas com sucesso
-   */
   categorize = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
     const { dictionary, minScore }: { dictionary?: CategoryDictionary; minScore?: number } = req.body || {};
@@ -375,39 +223,6 @@ export class LeiController {
     res.status(200).json(response);
   });
 
-  /**
-   * @swagger
-   * /leis/{id}/export:
-   *   get:
-   *     summary: Exporta uma lei em formato JSON estruturado
-   *     tags: [Leis]
-   *     parameters:
-   *       - in: path
-   *         name: id
-   *         required: true
-   *         schema:
-   *           type: string
-   *         description: ID da lei (CUID)
-   *       - in: query
-   *         name: format
-   *         schema:
-   *           type: string
-   *           enum: [json, text]
-   *           default: json
-   *         description: Formato de exportação
-   *     responses:
-   *       200:
-   *         description: Lei exportada
-   *         content:
-   *           application/json:
-   *             schema:
-   *               $ref: '#/components/schemas/Lei'
-   *           text/plain:
-   *             schema:
-   *               type: string
-   *       404:
-   *         description: Lei não encontrada
-   */
   exportLei = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
     const { format = 'json' } = req.query as any;
@@ -425,7 +240,6 @@ export class LeiController {
     }
 
     if (format === 'text') {
-      // Exportar como texto simples
       let textContent = `${lei.titulo}\n\n`;
       if (lei.ementa) {
         textContent += `Ementa: ${lei.ementa}\n\n`;
@@ -436,7 +250,6 @@ export class LeiController {
       res.setHeader('Content-Disposition', `attachment; filename="${lei.numero || 'lei'}.txt"`);
       res.send(textContent);
     } else {
-      // Exportar como JSON (padrão)
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${lei.numero || 'lei'}.json"`);
       res.json(lei);

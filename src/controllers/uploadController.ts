@@ -61,11 +61,19 @@ export class UploadController {
       throw new AppError('Nenhum arquivo foi enviado', 400);
     }
 
+    const municipioId = req.user?.municipioId;
+    const usuarioId = req.user?.id;
+
+    if (!municipioId || !usuarioId) {
+      throw new AppError('Usuário deve estar vinculado a um município para realizar upload', 400);
+    }
+
     const file = req.file as Express.Multer.File;
     logger.info('File upload received', { 
       filename: file.originalname,
       size: file.size,
-      mimetype: file.mimetype 
+      mimetype: file.mimetype,
+      municipioId
     });
 
     const { storedName, fullPath } = await saveFile(file.buffer, file.originalname);
@@ -83,7 +91,7 @@ export class UploadController {
       for (const lei of leis) {
         try {
           lei.origem = fileUrl;
-          const saved = await this.leiService.saveLei(lei);
+          const saved = await this.leiService.saveLei(lei, municipioId, usuarioId);
           successful.push(saved);
         } catch (e: any) {
           failed.push({ message: e?.message || 'Erro ao salvar lei' });
@@ -113,7 +121,7 @@ export class UploadController {
       return;
     }
     single.origem = fileUrl;
-    const savedLei = await this.leiService.saveLei(single);
+    const savedLei = await this.leiService.saveLei(single, municipioId, usuarioId);
     const response: ApiResponse = {
       success: true,
       data: savedLei,
@@ -182,6 +190,12 @@ export class UploadController {
    */
   uploadBatch = asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const files = req.files as Express.Multer.File[];
+    const municipioId = req.user?.municipioId;
+    const usuarioId = req.user?.id;
+
+    if (!municipioId || !usuarioId) {
+      throw new AppError('Usuário deve estar vinculado a um município para realizar upload', 400);
+    }
 
     if (!files || files.length === 0) {
       throw new AppError('Nenhum arquivo foi enviado', 400);
@@ -191,7 +205,7 @@ export class UploadController {
       throw new AppError('Máximo de 10 arquivos por requisição', 400);
     }
 
-    logger.info('Batch file upload received', { count: files.length });
+    logger.info('Batch file upload received', { count: files.length, municipioId });
 
     const successful: any[] = [];
     const failed: Array<{ filename: string; error: string }> = [];
@@ -213,7 +227,7 @@ export class UploadController {
           // Atualizar origem para URL pública do arquivo
           processResult.data.origem = fileUrl;
 
-          const savedLei = await this.leiService.saveLei(processResult.data);
+          const savedLei = await this.leiService.saveLei(processResult.data, municipioId, usuarioId);
           successful.push(savedLei);
         } else {
           failed.push({
@@ -304,6 +318,13 @@ export class UploadController {
       throw new AppError('Nenhum arquivo foi enviado', 400);
     }
 
+    const municipioId = req.user?.municipioId;
+    const usuarioId = req.user?.id;
+
+    if (!municipioId || !usuarioId) {
+      throw new AppError('Usuário deve estar vinculado a um município para realizar upload', 400);
+    }
+
     const file = req.file as Express.Multer.File;
     const headerPatternRaw = (req.body?.headerPattern as string | undefined) || undefined;
     const headerSample = (req.body?.headerSample as string | undefined) || undefined;
@@ -314,7 +335,8 @@ export class UploadController {
       size: file.size,
       mimetype: file.mimetype,
       headerPatternProvided: Boolean(headerPatternRaw),
-      headerSampleProvided: Boolean(headerSample)
+      headerSampleProvided: Boolean(headerSample),
+      municipioId
     });
 
     // Salvar arquivo no disco (subpasta import/split)
@@ -338,7 +360,7 @@ export class UploadController {
       } else {
         for (const lei of leis) {
           lei.origem = fileUrl;
-          const saved = await this.leiService.saveLei(lei);
+          const saved = await this.leiService.saveLei(lei, municipioId, usuarioId);
           successful.push(saved);
         }
       }

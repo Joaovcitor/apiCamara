@@ -89,6 +89,12 @@ export interface PaginatedResponse<T> {
   };
 }
 
+export interface Municipio {
+  id: string;
+  nome: string;
+  slug: string;
+}
+
 export interface LeiWithRelations {
   id: string;
   titulo: string;
@@ -100,6 +106,9 @@ export interface LeiWithRelations {
   criadoEm: Date;
   atualizadoEm: Date;
   tipo?: LeiTipo;
+  municipioId?: string;
+  municipio?: Municipio;
+  usuarioId?: string;
   artigos: ArtigoWithRelations[];
   categorias: { id: string; nome: string; slug: string }[];
 }
