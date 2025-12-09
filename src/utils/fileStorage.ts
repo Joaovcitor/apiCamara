@@ -72,5 +72,8 @@ export async function saveFile(
 // Alterado: aceita nome ou caminho relativo
 export function getPublicUrl(storedOrRelativePath: string): string {
   // Os arquivos serão servidos via express.static em /files
-  return `/files/${storedOrRelativePath}`;
+  // Retornar URL completa para evitar problemas com portas diferentes (frontend vs backend)
+  const port = process.env['PORT'] || 3000;
+  const baseUrl = process.env['API_BASE_URL'] || `http://localhost:${port}`;
+  return `${baseUrl}/files/${storedOrRelativePath}`;
 }

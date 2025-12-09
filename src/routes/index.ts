@@ -31,6 +31,8 @@ const municipioController = new MunicipioController();
 // ===== ROTAS DE MUNICIPIOS (PUBLICAS/ADMIN) =====
 router.get('/municipios', municipioController.list);
 router.get('/municipios/:slug', municipioController.getBySlug);
+router.get('/municipios/:slug/assets', municipioController.getAssetsBySlug); // Public access
+router.get('/municipios/me/assets', requireAuth, municipioController.getMyAssets); // Authenticated user access
 router.post('/municipios', requireAuth, requireRole('admin'), municipioController.create);
 router.post('/municipios/assets', requireAuth, requireRole('admin'), uploadImages, handleMulterError, validateUpload, municipioController.uploadAssets);
 

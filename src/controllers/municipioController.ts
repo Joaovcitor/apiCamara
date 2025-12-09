@@ -65,13 +65,13 @@ export class MunicipioController {
     let footerUrl: string | undefined;
 
     if (files['header']?.[0]) {
-      const { storedName } = await saveFile(files['header'][0].buffer, files['header'][0].originalname, 'assets');
-      headerUrl = getPublicUrl(storedName);
+      const { publicPath } = await saveFile(files['header'][0].buffer, files['header'][0].originalname, 'assets');
+      headerUrl = getPublicUrl(publicPath);
     }
 
     if (files['footer']?.[0]) {
-      const { storedName } = await saveFile(files['footer'][0].buffer, files['footer'][0].originalname, 'assets');
-      footerUrl = getPublicUrl(storedName);
+      const { publicPath } = await saveFile(files['footer'][0].buffer, files['footer'][0].originalname, 'assets');
+      footerUrl = getPublicUrl(publicPath);
     }
 
     const updated = await this.municipioService.updateImages(municipioId, headerUrl, footerUrl);
@@ -82,5 +82,52 @@ export class MunicipioController {
       message: 'Imagens atualizadas com sucesso',
     };
     res.json(response);
+  };
+  getAssetsBySlug = async (req: Request, res: Response) => {
+    const { slug } = req.params;
+    if (!slug) {
+      throw new AppError('Slug é obrigatório', 400);
+    }
+    try {
+      const municipio = await this.municipioService.getMunicipioBySlug(slug);
+      if (!municipio) {
+        throw new AppError('Município não encontrado', 404);
+      }
+      const response: ApiResponse = { 
+        success: true, 
+        data: { 
+          headerImage: municipio.headerImage, 
+          footerImage: municipio.footerImage 
+        } 
+      };
+      res.json(response);
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw new AppError('Erro ao buscar assets do município', 500);
+    }
+  };
+
+  getMyAssets = async (req: Request, res: Response) => {
+    const municipioId = req.user?.municipioId;
+    if (!municipioId) {
+      throw new AppError('Usuário não vinculado a um município', 400);
+    }
+    try {
+      const municipio = await this.municipioService.getMunicipioById(municipioId);
+      if (!municipio) {
+        throw new AppError('Município não encontrado', 404);
+      }
+      const response: ApiResponse = { 
+        success: true, 
+        data: { 
+          headerImage: municipio.headerImage, 
+          footerImage: municipio.footerImage 
+        } 
+      };
+      res.json(response);
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw new AppError('Erro ao buscar assets do usuário', 500);
+    }
   };
 }
